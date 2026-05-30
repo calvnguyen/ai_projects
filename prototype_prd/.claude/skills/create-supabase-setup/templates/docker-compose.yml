@@ -1,0 +1,68 @@
+# =============================================================================
+# docker-compose.yml — OPTIONAL self-hosted Supabase-style stack
+# -----------------------------------------------------------------------------
+# YOU PROBABLY DON'T NEED THIS.
+#
+# For local development the Supabase CLI (`supabase start`) already runs the
+# full stack in Docker for you — it's the recommended path. Use THIS file only
+# when you need to self-host the stack yourself (e.g. on your own VPS) and want
+# explicit control over the containers.
+#
+# This is a minimal illustration: Postgres + Studio + a couple of core services.
+# A complete self-hosted setup has more services (kong gateway, gotrue, realtime,
+# storage, rest, meta, imgproxy, vector). For real self-hosting, start from the
+# official compose file: https://github.com/supabase/supabase/tree/master/docker
+#
+# Start:  docker compose up -d
+# Stop:   docker compose down            (add -v to also delete volumes/data)
+# Logs:   docker compose logs -f db
+# =============================================================================
+
+services:
+  db:
+    image: supabase/postgres:15.1.1.78
+    container_name: supabase-db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # Auto-run any .sql files placed here on first boot:
+      - ./supabase/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  studio:
+    image: supabase/studio:latest
+    container_name: supabase-studio
+    restart: unless-stopped
+    ports:
+      - "54323:3000"
+    environment:
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  meta:
+    image: supabase/postgres-meta:latest
+    container_name: supabase-meta
+    restart: unless-stopped
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: db
+      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:
